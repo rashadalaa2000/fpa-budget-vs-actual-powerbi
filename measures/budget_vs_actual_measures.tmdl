@@ -1,0 +1,182 @@
+createOrReplace
+
+	ref table data
+
+		measure 'Total Budget' = SUM(data[Budget Amount])
+			formatString: \$#,0
+			displayFolder: 1 Core
+
+		measure 'Total Actual' = SUM(data[Actual Amount])
+			formatString: \$#,0
+			displayFolder: 1 Core
+
+		measure Variance = [Total Actual] - [Total Budget]
+			formatString: \$#,0;-\$#,0;\$#,0
+			displayFolder: 1 Core
+
+		measure 'Variance %' = DIVIDE([Variance], [Total Budget])
+			formatString: 0.0%
+			displayFolder: 1 Core
+
+		measure 'Budget Utilization %' = DIVIDE([Total Actual], [Total Budget])
+			formatString: 0.0%
+			displayFolder: 1 Core
+
+		measure 'Remaining Budget' = [Total Budget] - [Total Actual]
+			formatString: \$#,0;-\$#,0;\$#,0
+			displayFolder: 1 Core
+
+		measure 'Transaction Count' = DISTINCTCOUNT(data[Transaction_ID])
+			formatString: #,0
+			displayFolder: 1 Core
+
+		measure 'Avg Transaction Value' = DIVIDE([Total Actual], [Transaction Count])
+			formatString: \$#,0
+			displayFolder: 1 Core
+
+		measure 'Total Overspend' =
+				SUMX(
+					data,
+					MAX(data[Actual Amount] - data[Budget Amount], 0)
+				)
+			formatString: \$#,0
+			displayFolder: 2 Over and Under
+
+		measure 'Total Underspend' =
+				SUMX(
+					data,
+					MAX(data[Budget Amount] - data[Actual Amount], 0)
+				)
+			formatString: \$#,0
+			displayFolder: 2 Over and Under
+
+		measure 'Over Budget Transactions' =
+				SUMX(
+					data,
+					IF(data[Actual Amount] > data[Budget Amount], 1, 0)
+				)
+			formatString: #,0
+			displayFolder: 2 Over and Under
+
+		measure '% Transactions Over Budget' = DIVIDE([Over Budget Transactions], COUNTROWS(data))
+			formatString: 0.0%
+			displayFolder: 2 Over and Under
+
+		measure 'Avg Absolute Variance %' =
+				AVERAGEX(
+					data,
+					DIVIDE(ABS(data[Actual Amount] - data[Budget Amount]), data[Budget Amount])
+				)
+			formatString: 0.0%
+			displayFolder: 2 Over and Under
+
+		measure 'Variance Contribution %' =
+				DIVIDE(
+					[Variance],
+					CALCULATE([Variance], ALLSELECTED(data))
+				)
+			formatString: 0.0%
+			displayFolder: 3 Contribution
+
+		measure 'Overspend Contribution %' =
+				DIVIDE(
+					[Total Overspend],
+					CALCULATE([Total Overspend], ALLSELECTED(data))
+				)
+			formatString: 0.0%
+			displayFolder: 3 Contribution
+
+		measure 'Variance Status' =
+				SWITCH(
+					TRUE(),
+					ISBLANK([Variance %]), BLANK(),
+					ABS([Variance %]) <= 0.05, "On Target",
+					[Variance] > 0, "Over Budget",
+					"Under Budget"
+				)
+			displayFolder: 4 Formatting
+
+		measure 'Variance Color' =
+				SWITCH(
+					TRUE(),
+					[Variance %] > 0.05, "#C0392B",
+					[Variance %] < -0.05, "#27AE60",
+					"#7F8C8D"
+				)
+			displayFolder: 4 Formatting
+
+		measure 'Budget YTD' =
+				VAR EndDate = EOMONTH(MAX(data[Date]), 0)
+				VAR StartDate = DATE(YEAR(EndDate), 1, 1)
+				RETURN
+					CALCULATE(
+						[Total Budget],
+						REMOVEFILTERS(data[Date]),
+						data[Date] >= StartDate,
+						data[Date] <= EndDate
+					)
+			formatString: \$#,0
+			displayFolder: 5 Time
+
+		measure 'Actual YTD' =
+				VAR EndDate = EOMONTH(MAX(data[Date]), 0)
+				VAR StartDate = DATE(YEAR(EndDate), 1, 1)
+				RETURN
+					CALCULATE(
+						[Total Actual],
+						REMOVEFILTERS(data[Date]),
+						data[Date] >= StartDate,
+						data[Date] <= EndDate
+					)
+			formatString: \$#,0
+			displayFolder: 5 Time
+
+		measure 'Variance YTD' = [Actual YTD] - [Budget YTD]
+			formatString: \$#,0;-\$#,0;\$#,0
+			displayFolder: 5 Time
+
+		measure 'Variance % YTD' = DIVIDE([Variance YTD], [Budget YTD])
+			formatString: 0.0%
+			displayFolder: 5 Time
+
+		measure 'Actual Prior Month' =
+				VAR CurrentDate = MAX(data[Date])
+				VAR PrevStart = EOMONTH(CurrentDate, -2) + 1
+				VAR PrevEnd = EOMONTH(CurrentDate, -1)
+				RETURN
+					CALCULATE(
+						[Total Actual],
+						REMOVEFILTERS(data[Date]),
+						data[Date] >= PrevStart,
+						data[Date] <= PrevEnd
+					)
+			formatString: \$#,0
+			displayFolder: 5 Time
+
+		measure 'Actual MoM Change' = [Total Actual] - [Actual Prior Month]
+			formatString: \$#,0;-\$#,0;\$#,0
+			displayFolder: 5 Time
+
+		measure 'Actual MoM %' = DIVIDE([Actual MoM Change], [Actual Prior Month])
+			formatString: 0.0%
+			displayFolder: 5 Time
+
+		measure 'Months in Context' =
+				COUNTROWS(
+					DISTINCT(
+						SELECTCOLUMNS(
+							data,
+							"YM", YEAR(data[Date]) * 100 + MONTH(data[Date])
+						)
+					)
+				)
+			formatString: #,0
+			displayFolder: 6 Forecast
+
+		measure 'Avg Monthly Actual (Burn Rate)' = DIVIDE([Total Actual], [Months in Context])
+			formatString: \$#,0
+			displayFolder: 6 Forecast
+
+		measure 'Projected Annual Actual' = [Avg Monthly Actual (Burn Rate)] * 12
+			formatString: \$#,0
+			displayFolder: 6 Forecast
